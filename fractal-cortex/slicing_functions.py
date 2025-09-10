@@ -1560,9 +1560,9 @@ def write_3_axis_gcode(newFile, savedFileName, printSettings, transform3DList, a
 
     openFile = open(newFile, "w")
 
-    """ HEADER """
+    """ HEADER (RepRapFirmware, XYZBC) """
     openFile.write(";" + "SLICER:       Fractal Cortex" + "\n")
-    openFile.write(";" + "FIRMWARE:     Klipper" + "\n")
+    openFile.write(";" + "FIRMWARE:     RepRapFirmware" + "\n")
     openFile.write(";" + "FILE:         " + savedFileName + "\n")
     openFile.write(";" + "--------------------------" + "\n")
     openFile.write(";" + "PRINT SETTINGS:" + "\n")
@@ -1587,24 +1587,45 @@ def write_3_axis_gcode(newFile, savedFileName, printSettings, transform3DList, a
     openFile.write(";" + "enableSupports:      " + str(enableSupports) + "\n")
     openFile.write(";" + "enableBrim:          " + str(enableBrim) + "\n")
     openFile.write(";" + "--------------------------" + "\n")
-    openFile.write("G28                   ;Home X, Y, & Z axes" + "\n")
-    openFile.write("home_ab               ;Home B Axis and Enable A Axis" + "\n")
-    openFile.write("M140 S" + str(initialBedTemp) + "            ;Set initial bed temp" + "\n")
-    openFile.write("M105                  ;Get nozzle temp" + "\n")
-    openFile.write("M190 S" + str(initialBedTemp) + "            ;Set initial bed temperature and wait" + "\n")
-    openFile.write("M104 S" + str(initialNozzleTemp) + "           ;Set initial nozzle temperature" + "\n")
-    openFile.write("M105                  ;Get nozzle temp" + "\n")
-    openFile.write("M109 S" + str(initialNozzleTemp) + "           ;Set initial nozzle temperature and wait" + "\n")
-    openFile.write("M82                   ;Absolute extrusion mode" + "\n")
-    openFile.write("Z_TILT_ADJUST         ;Z Tilt the Bed" + "\n")
-    openFile.write("G28 Y                 ;Home Y Axis" + "\n")
-    openFile.write("G0 F3000.0 Z30.0" + "\n")
-    openFile.write("G0 X0.0 Y0.0" + "\n")
-    openFile.write("G92 E0                ;Reset extruder position" + "\n")
-    openFile.write("G1 F2700 E-5" + "\n")
-    openFile.write(";END OF HEADER" + "\n")
 
-    # May want to have a command that lays a curve of filament near the OD of the bed as the bed rotates to clear the nozzle before each print
+    # --- RepRapFirmware-safe sequence (XYZBC) ---
+    openFile.write("G28                      ; Home X, Y, Z\n")
+    openFile.write("G28 B C                  ; Home B and C (requires sys/homeb.g & sys/homec.g)\n")
+    # If you prefer a macro instead of G28 B C, replace with:
+    # M98 P\"macros/home_bc.g\"   ; Run custom B/C homing macro
+
+    openFile.write("M140 S" + str(initialBedTemp) + "       ; Set initial bed temp\n")
+    openFile.write("M105                     ; Report temps (optional)\n")
+    openFile.write("M190 S" + str(initialBedTemp) + "       ; Wait for bed\n")
+    openFile.write("M104 S" + str(initialNozzleTemp) + "     ; Set initial nozzle temp\n")
+    openFile.write("M105                     ; Report temps (optional)\n")
+    openFile.write("M109 S" + str(initialNozzleTemp) + "     ; Wait for nozzle\n")
+
+    openFile.write("M82                      ; Absolute extrusion mode\n")
+
+    openFile.write("G32                      ; Bed tram/tilt adjust (uses sys/bed.g + M671)\n")
+    # If you want an explicit macro name instead of G32:
+    # M98 P\"sys/bed.g\"          ; Run bed leveling macro
+
+    # (Optional) Re-home any axes affected by probing mechanics:
+    # G28 Y                     ; Re-home Y (optional)
+
+    openFile.write("G0 F3000.0 Z30.0         ; Lift to safe Z\n")
+    openFile.write("G0 X0.0 Y0.0             ; Move to origin/center\n")
+    openFile.write("G92 E0                   ; Reset extruder position\n")
+    openFile.write("G1 F2700 E-5             ; Prime/retract as routine expects\n")
+    openFile.write(";END OF HEADER\n")
+
+    # --- Notes ---
+    # 1) XYZBC mapping: define axes in config.g (e.g., M584 X.. Y.. Z.. B.. C..).
+    #    Provide homing files: /sys/homeb.g and /sys/homec.g for G28 B C.
+    #    Set endstops with M574 (or sensorless if used) for B/C as applicable.
+    # 2) G32 requires M671 (Z screw XY coordinates) in config.g and a probe routine in /sys/bed.g (G30 points).
+    # 3) If B/C are rotary axes in degrees, set their steps-per-unit accordingly (e.g., M92 B{steps/deg} C{steps/deg}).
+    #    Then B/C moves and homes are specified in degrees; keep your slicer’s output consistent with that choice.
+    # 4) You can keep Klipper-like macro names by calling M98 P\"macros/...\" instead of direct G28/G32 lines.
+    # 5) Standard motion/temp/extrusion (G0/G1/G92, M104/M109/M140/M190, M82) are RRF-compatible and unchanged.
+    # 6) Adjust the retract/prime (G1 F2700 E-5) to your nozzle-clearing preference; add a skirt/ooze line macro if desired.
 
     """ BODY """
     # Remember to add half the layerHeight to the Z commands
