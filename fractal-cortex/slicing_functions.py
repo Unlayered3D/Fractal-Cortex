@@ -1288,9 +1288,9 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
 
     openFile = open(newFile, "w")
 
-    """ HEADER """
+    """ HEADER (RepRapFirmware, XYZBC) """
     openFile.write(";" + "SLICER:       Fractal Cortex" + "\n")
-    openFile.write(";" + "FIRMWARE:     Klipper" + "\n")
+    openFile.write(";" + "FIRMWARE:     RepRapFirmware" + "\n")
     openFile.write(";" + "FILE:         " + savedFileName + "\n")
     openFile.write(";" + "--------------------------" + "\n")
     openFile.write(";" + "PRINT SETTINGS:" + "\n")
@@ -1315,23 +1315,33 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     openFile.write(";" + "enableSupports:      " + str(enableSupports) + "\n")
     openFile.write(";" + "enableBrim:          " + str(enableBrim) + "\n")
     openFile.write(";" + "--------------------------" + "\n")
-    openFile.write("G28                   ;Home X, Y, & Z axes" + "\n")
-    openFile.write("home_ab               ;Home B Axis and Enable A Axis" + "\n")
-    openFile.write("M140 S" + str(initialBedTemp) + "            ;Set initial bed temp" + "\n")
-    openFile.write("M105                  ;Get nozzle temp" + "\n")
-    openFile.write("M190 S" + str(initialBedTemp) + "            ;Set initial bed temperature and wait" + "\n")
-    openFile.write("M104 S" + str(initialNozzleTemp) + "           ;Set initial nozzle temperature" + "\n")
-    openFile.write("M105                  ;Get nozzle temp" + "\n")
-    openFile.write("M109 S" + str(initialNozzleTemp) + "           ;Set initial nozzle temperature and wait" + "\n")
-    openFile.write("M82                   ;Absolute extrusion mode" + "\n")
-    openFile.write("Z_TILT_ADJUST         ;Z Tilt the Bed" + "\n")
-    openFile.write("G0 F3000.0 Z30.0" + "\n")
-    openFile.write("G0 X0.0 Y0.0" + "\n")
-    openFile.write("DIAG_CENTRALIZE" + "\n")
-    openFile.write("G0 X0.0 Y0.0" + "\n")
-    openFile.write("G92 E0                ;Reset extruder position" + "\n")
-    openFile.write("G1 F2700 E-5" + "\n")
-    openFile.write(";END OF HEADER" + "\n")
+
+    # --- Homing & heatup (RRF) ---
+    openFile.write("G28                      ; Home X, Y, Z\n")
+    openFile.write("G28 B C                  ; Home B & C (requires /sys/homeb.g and /sys/homec.g)\n")
+
+    openFile.write("M140 S" + str(initialBedTemp) + "       ; Set initial bed temp\n")
+    openFile.write("M105                     ; Report temps (optional)\n")
+    openFile.write("M190 S" + str(initialBedTemp) + "       ; Wait for bed\n")
+    openFile.write("M104 S" + str(initialNozzleTemp) + "     ; Set initial nozzle temp\n")
+    openFile.write("M105                     ; Report temps (optional)\n")
+    openFile.write("M109 S" + str(initialNozzleTemp) + "     ; Wait for nozzle\n")
+
+    openFile.write("M82                      ; Absolute extrusion mode\n")
+
+    # --- Bed tramming / tilt adjust ---
+    openFile.write("G32                      ; Bed tram (uses /sys/bed.g + M671 in config.g)\n")
+
+    # --- Staging / centering ---
+    openFile.write("G0 F3000.0 Z30.0         ; Lift to safe Z\n")
+    openFile.write("G0 X0.0 Y0.0             ; Move to origin/center\n")
+    openFile.write("M98 P\"macros/diag_centralize.g\"  ; Custom centralize/diagnostic macro\n")
+    openFile.write("G0 X0.0 Y0.0             ; Ensure back at origin/center\n")
+
+    # --- Extruder priming state ---
+    openFile.write("G92 E0                   ; Reset extruder position\n")
+    openFile.write("G1 F2700 E-5             ; Small retract before start\n")
+    openFile.write(";END OF HEADER\n")
 
     # May want to have a command that lays a curve of filament near the OD of the bed as the bed rotates to clear the nozzle before each print
 
