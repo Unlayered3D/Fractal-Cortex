@@ -1716,17 +1716,29 @@ def write_3_axis_gcode(newFile, savedFileName, printSettings, transform3DList, a
                     runOnce = False
 
     """ FOOTER """
+    # --- FOOTER (RepRapFirmware, XYZBC) ---
     openFile.write(";" + "FOOTER:" + "\n")
-    openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(E - 2.0, 5)) + " ; Retract for end of print" + "\n")
+    openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(E - 2.0, 5)) + " ; Retract for end of print\n")
     openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight + layerHeight, 5)) + "\n")
-    openFile.write("M140 S0       ;Set bed temp to zero" + "\n")
-    openFile.write("M104 S0       ;Set nozzle temp to zero" + "\n")
-    openFile.write("G28 Y         ;Home X-Axis" + "\n")
-    openFile.write("G28 X         ;Home X-Axis" + "\n")
-    openFile.write("MANUAL_STEPPER STEPPER=stepper_a MOVE=0.0 SPEED=24.43822 SYNC=0" + "\n")
-    openFile.write("MANUAL_STEPPER STEPPER=stepper_b MOVE=0.0 SPEED=5.27003 SYNC=1 STOP_ON_ENDSTOP=2" + "\n")
-    openFile.write(";" + "A & B Axes Homed" + "\n")
-    openFile.write(";" + "End of GCODE" + "\n")
+
+    openFile.write("M140 S0                 ; Set bed temp to zero\n")
+    openFile.write("M104 S0                 ; Set nozzle temp to zero\n")
+    # openFile.write("M106 S0                ; (Optional) Turn part-cooling fan off\n")
+
+    openFile.write("G28 Y                   ; Home Y axis\n")
+    openFile.write("G28 X                   ; Home X axis\n")
+    openFile.write("G28 B C                 ; Home B and C axes (requires /sys/homeb.g and /sys/homec.g)\n")
+
+    # (Optional) Park position after homing:
+    # openFile.write("G0 X0 Y0                ; Move to park/origin\n")
+    # openFile.write("G92 E0                  ; Reset extruder position\n")
+
+    # (Optional) Disable motors after homing and park:
+    # openFile.write("M84                     ; Disable motors\n")
+
+    openFile.write(";" + "B & C axes homed\n")
+    openFile.write(";" + "End of GCODE\n")
+
 
     openFile.close()
 
