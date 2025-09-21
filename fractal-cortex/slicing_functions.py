@@ -1352,130 +1352,156 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     E = 0  # Cumulative length of 1.75mm diameter filament used at every line of G-Code
     previousE = 0
 
-    for key in chunk_transform3DList: # For each chunk
+    for key in chunk_transform3DList:  # For each chunk
         openFile.write(";" + "Chunk " + key + "\n")
         transform3DList = chunk_transform3DList[key]
         shellRingsListList = chunk_shellRingsListList[key]
         optimizedSolidInfills = chunk_optimizedSolidInfills[key]
         optimizedInternalInfills = chunk_optimizedInternalInfills[key]
 
-        theta = BMOVE_Degrees[int(key)]*(np.pi/180.0)
-        phi = AMOVE_Degrees[int(key)]*(np.pi/180.0)
-        DCM_AB = np.eye(3) 
+        # Your existing angle math (keep as-is)
+        theta = BMOVE_Degrees[int(key)] * (np.pi / 180.0)  # C rotation (about X in your DCM)
+        phi   = AMOVE_Degrees[int(key)] * (np.pi / 180.0)  # B rotation (about Z in your DCM)
+        DCM_AB = np.eye(3)
 
-        if key != '0': # If it's not the initial chunk, do some preparation to handle the extra 2 axes
+        # ---- RRF pre-rotation handling for B & C (replaces MANUAL_STEPPER) ----
+        if key != '0':  # Not the initial chunk
             newChunk = True
-            if round(ASPEED_Scaled[int(key)], 5) != 0 and round(BSPEED_Scaled[int(key)], 5) != 0:
-                openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5) + 10.0) + "; Moving Z axis to clear A & B Motion" + "\n")
-                openFile.write('G0 X0.0 Y-175.0' + '; Moving Print Head to clear A & B Motion' + '\n')
-                openFile.write('MANUAL_STEPPER STEPPER=stepper_a MOVE=' + str(round(AMOVE_Degrees[int(key)], 5)) + ' SPEED=' + str(round(ASPEED_Scaled[int(key)], 5)) + ' SYNC=0' + '\n')
-                openFile.write('MANUAL_STEPPER STEPPER=stepper_b MOVE=' + str(round(BMOVE_Degrees[int(key)], 5)) + ' SPEED=' + str(round(BSPEED_Scaled[int(key)], 5)) + ' SYNC=1' + ' STOP_ON_ENDSTOP=2' + '\n')
-            elif round(ASPEED_Scaled[int(key)], 5) == 0 and round(BSPEED_Scaled[int(key)], 5) != 0:
-                openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5) + 10.0) + "; Moving Z axis to clear A & B Motion" + "\n")
-                openFile.write('G0 X0.0 Y-175.0' + '; Moving Print Head to clear A & B Motion' + '\n')
-                openFile.write('MANUAL_STEPPER STEPPER=stepper_b MOVE=' + str(round(BMOVE_Degrees[int(key)], 5)) + ' SPEED=' + str(round(BSPEED_Scaled[int(key)], 5)) + ' SYNC=1' + ' STOP_ON_ENDSTOP=2' + '\n')
-            elif round(ASPEED_Scaled[int(key)], 5) != 0 and round(BSPEED_Scaled[int(key)], 5) == 0:
-                openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5) + 10.0) + "; Moving Z axis to clear A & B Motion" + "\n")
-                openFile.write('G0 X0.0 Y-175.0' + '; Moving Print Head to clear A & B Motion' + '\n')
-                openFile.write('MANUAL_STEPPER STEPPER=stepper_a MOVE=' + str(round(AMOVE_Degrees[int(key)], 5)) + ' SPEED=' + str(round(ASPEED_Scaled[int(key)], 5)) + ' SYNC=1' + '\n')
-            else: # Both ASPEED & BSPEED are zero
-                openFile.write('; No Change in AB Motion Required'+'\n')
 
-            openFile.write('; A & B Axis Motion Complete'+'\n')
-            
-            QA = np.array([[np.cos(phi), -np.sin(phi), 0], [np.sin(phi), np.cos(phi), 0], [0, 0, 1]])
-            QB = np.array([[1, 0, 0], [0, np.cos(theta), -np.sin(theta)], [0, np.sin(theta), np.cos(theta)]])
+            # Speeds are in deg/s; RRF feed is per minute -> multiply by 60
+            a_spd_degmin = round(ASPEED_Scaled[int(key)] * 60.0, 5)  # B axis speed
+            b_spd_degmin = round(BSPEED_Scaled[int(key)] * 60.0, 5)  # C axis speed
+
+            a_has_move = (round(ASPEED_Scaled[int(key)], 5) != 0)
+            b_has_move = (round(BSPEED_Scaled[int(key)], 5) != 0)
+
+            # Clear space before rotary motion (keep your clearances)
+            openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5) + 10.0) + " ; Lift for B & C motion\n")
+            openFile.write("G0 X0.0 Y-175.0 ; Clear XY for B & C motion\n")
+
+            if a_has_move and b_has_move:
+                feed_degmin = str(max(a_spd_degmin, b_spd_degmin))
+                openFile.write(
+                    "G1 B" + str(round(AMOVE_Degrees[int(key)], 5)) +
+                    " C" + str(round(BMOVE_Degrees[int(key)], 5)) +
+                    " F" + feed_degmin + "\n"
+                )
+            elif (not a_has_move) and b_has_move:
+                openFile.write(
+                    "G1 C" + str(round(BMOVE_Degrees[int(key)], 5)) +
+                    " F" + str(b_spd_degmin) + "\n"
+                )
+            elif a_has_move and (not b_has_move):
+                openFile.write(
+                    "G1 B" + str(round(AMOVE_Degrees[int(key)], 5)) +
+                    " F" + str(a_spd_degmin) + "\n"
+                )
+            else:
+                openFile.write("; No change in B & C motion required\n")
+
+            openFile.write("; B & C axis motion complete\n")
+
+            # Orientation math (unchanged)
+            QA = np.array([[np.cos(phi), -np.sin(phi), 0],
+                        [np.sin(phi),  np.cos(phi), 0],
+                        [0,            0,           1]])
+            QB = np.array([[1, 0, 0],
+                        [0, np.cos(theta), -np.sin(theta)],
+                        [0, np.sin(theta),  np.cos(theta)]])
             DCM_AB = np.matmul(QB, QA)
-        elif key == '0':
+        else:
             newChunk = False
 
-        printable_shell_pathPoints, midLayer_Z_Heights = transform_paths_to_printable_orientation(shellRingsListList, transform3DList, DCM_AB)
-        printable_solidInfill_pathPoints = transform_infill_paths_to_printable_orientation(optimizedSolidInfills, transform3DList, DCM_AB)
-        printable_internalInfill_pathPoints = transform_infill_paths_to_printable_orientation(optimizedInternalInfills, transform3DList, DCM_AB)
+        # Transform paths to printable orientation (unchanged)
+        printable_shell_pathPoints, midLayer_Z_Heights = transform_paths_to_printable_orientation(
+            shellRingsListList, transform3DList, DCM_AB
+        )
+        printable_solidInfill_pathPoints = transform_infill_paths_to_printable_orientation(
+            optimizedSolidInfills, transform3DList, DCM_AB
+        )
+        printable_internalInfill_pathPoints = transform_infill_paths_to_printable_orientation(
+            optimizedInternalInfills, transform3DList, DCM_AB
+        )
 
         numLayers = len(transform3DList)
         for k in range(numLayers):  # For each layer
             openFile.write(";" + "Layer " + str(k) + "\n")
-            if k == 0:  # If it's the initial layer, use initial layer speeds
+            if k == 0:  # Initial layer speeds
                 G0XY_FEEDRATE = initialTravelSpeed * 60.0
                 G1XY_FEEDRATE_SHELLS = G1XY_SLOW_FEEDRATE
                 G1XY_FEEDRATE_SOLIDINFILL = G1XY_SLOW_FEEDRATE
                 G1XY_FEEDRATE_INTERNALINFILL = G1XY_SLOW_FEEDRATE
-            else:  # For all layers aside from the initial layer, use nominal speeds
+            else:  # Nominal speeds
                 G0XY_FEEDRATE = travelSpeed * 60.0
                 G1XY_FEEDRATE_SHELLS = G1XY_FEEDRATE
                 G1XY_FEEDRATE_SOLIDINFILL = G1XY_FEEDRATE
                 G1XY_FEEDRATE_INTERNALINFILL = G1XY_FEEDRATE
-            if k == 1:  # If it's the second layer, transition to nominal print settings
-                openFile.write("M104 S" + str(nozzleTemp) + "   ;Set nozzle temperature for remainder of print" + "\n")
-                openFile.write("M140 S" + str(bedTemp) + "    ;Set bed temp for remainder of print" + "\n")
+
+            if k == 1:  # Transition to nominal temps
+                openFile.write("M104 S" + str(nozzleTemp) + "   ;Set nozzle temperature for remainder of print\n")
+                openFile.write("M140 S" + str(bedTemp) + "    ;Set bed temp for remainder of print\n")
 
             current3DTransform = transform3DList[k]
 
-            if current3DTransform.shape == (4, 4):  # If there is something to print at this layer, do so. Otherwise, there is a vertical gap underneath a floating island in which G-Code shouldn't be generated
-                nozzleHeight = midLayer_Z_Heights[k] + 0.5 * layerHeight # Current height of nozzle
+            # If there is something to print at this layer
+            if current3DTransform.shape == (4, 4):
+                nozzleHeight = midLayer_Z_Heights[k] + 0.5 * layerHeight  # Current height of nozzle
 
                 """ Z COMMAND """
                 openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5)) + "\n")
 
-                if key == '0' and k == 0 and adhesionList[0] != []: # If it's layer zero of the initial chunk and there is adhesion gcode (brims, skirts) to write, do so
+                if key == '0' and k == 0 and adhesionList[0] != []:  # Adhesion on first layer of first chunk
                     """ ADHESION FEATURE TITLE """
                     if enableBrim == True:
                         openFile.write(";" + "Brim" + "\n")
 
                     flattened_adhesion_rings = sum(adhesionList[0], [])
-                    flattened_adhesion_rings.reverse() # Reorder brim rings so the outer brim is printed first. That way the nozzle is primed for the innermost part of the brim that contacts the part
+                    flattened_adhesion_rings.reverse()  # Print outer brim first
 
                     adhesions = [list(ring.coords) for ring in flattened_adhesion_rings]
-                    
-                    runOnce = True  # True if this is the start of a new feature on this layer (feature means shells, infill, etc.)
+
+                    runOnce = True
                     newChunk = False
-                    for a in adhesions:  # G0 commands are written between each path on the same layer
+                    for a in adhesions:
                         pathPoints = a
                         """ XYE COMMANDS """
                         transcribe_pathPoints_to_gcode(pathPoints, G1XY_FEEDRATE_SHELLS, runOnce, newChunk)
                         runOnce = False
-                
-                if shellRingsListList[k] != []:  # If there are shells on this layer, write GCode for it
+
+                if shellRingsListList[k] != []:
                     """ SHELL(S) FEATURE TITLE """
                     openFile.write(";" + "Shell(s)" + "\n")
-
                     shells = printable_shell_pathPoints[k]
 
-                    runOnce = True  # True if this is the start of a new feature on this layer (feature means shells, infill, etc.)
-                    for shell in shells:  # G0 commands are written between each path on the same layer
+                    runOnce = True
+                    for shell in shells:
                         pathPoints = shell
-                        
                         """ XYE COMMANDS """
                         transcribe_pathPoints_to_gcode(pathPoints, G1XY_FEEDRATE_SHELLS, runOnce, newChunk)
                         runOnce = False
                         newChunk = False
 
-                if optimizedSolidInfills[k] != []:  # If there is solid infill on this layer, write GCode for it
+                if optimizedSolidInfills[k] != []:
                     """ SOLID INFILL FEATURE  TITLE """
                     openFile.write(";" + "Solid Infill" + "\n")
-
                     solidInfills = printable_solidInfill_pathPoints[k]
 
                     runOnce = True
                     for solidInfill in solidInfills:
                         pathPoints = solidInfill
-
                         """ XYE COMMANDS """
                         transcribe_pathPoints_to_gcode(pathPoints, G1XY_FEEDRATE_SOLIDINFILL, runOnce, newChunk)
                         runOnce = False
                         newChunk = False
 
-                if optimizedInternalInfills[k] != []:  # If there is internal infill on this layer, write GCode for it
+                if optimizedInternalInfills[k] != []:
                     """ INTERNAL INFILL FEATURE  TITLE """
                     openFile.write(";" + "Internal Infill" + "\n")
-
                     internalInfills = printable_internalInfill_pathPoints[k]
 
                     runOnce = True
                     for internalInfill in internalInfills:
                         pathPoints = internalInfill
-
                         """ XYE COMMANDS """
                         transcribe_pathPoints_to_gcode(pathPoints, G1XY_FEEDRATE_INTERNALINFILL, runOnce, newChunk)
                         runOnce = False
