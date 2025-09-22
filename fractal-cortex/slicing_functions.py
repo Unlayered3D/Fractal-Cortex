@@ -882,6 +882,7 @@ def all_5_axis_calculations(mesh, printSettings, slicingDirections):
         chunk_slice_levels = {}
         for k in range(int(numSlicingDirections)):
             currentChunk = chunkList[k]
+            # i added k == 1 for testing purposes to see if it would do planes better
             if k == 0: # If it's the initial slicing direction, no transformation is needed to get z_extents
                 chunkBounds = currentChunk.bounds
                 meshBottom = round(chunkBounds[0][2], 3)
@@ -1130,20 +1131,21 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
             point = pathPoints[p]
             X = round(point[0], 5)
             Y = round(point[1], 5)
+            Z = round(point[2], 5)
             if p == 0:  # If it's the first point in the path
                 if enableRetraction == True:
                     openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(E - retractionDistance, 5)) + " ; Retraction" + "\n")
                 if enableZHop == True:
-                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight + layerHeight, 5)) + "\n")
+                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z + layerHeight, 5)) + "\n")
                 if newChunk == True:
-                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight + 30.0 + layerHeight, 5)) + "\n")
+                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z + 30.0 + layerHeight, 5)) + "\n")
                     newChunk = False
                 if runOnce == True:  # If both the G0 and G1 feedrate for this feature hasn't yet been set on this layer
-                    openFile.write("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + "\n")
+                    openFile.write("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + " Z" + str(Z) + "\n")
                 else:  # If it's the first point in the path and G0 and G1 feedrates have already been set
-                    openFile.write("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + "\n") # ("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + "\n")
+                    openFile.write("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + " Z" + str(Z) + "\n") # ("G0 F" + str(G0XY_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + "\n")
                     if enableZHop == True:
-                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5)) + "\n")
+                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z, 5)) + "\n")
                     if enableRetraction == True:
                         openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(E, 5)) + " ; Reversed Retraction" + "\n")
             else:  # If it's any point other than the first point in the path
@@ -1151,17 +1153,18 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
                 E += ((4.0 * layerHeight * lineWidth * s) / (np.pi * (1.75**2)))  # Use conservation of mass to determine length of 1.75mm filament to extrude
                 if runOnce == True:  # If both the G0 and G1 feedrate for this feature hasn't yet been set on this layer
                     if enableZHop == True:
-                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z"+ str(round(nozzleHeight, 5)) + "\n")
+                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z"+ str(round(Z, 5)) + "\n")
                     if enableRetraction == True:
                         openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(previousE, 5)) + " ; Reversed Retraction" + "\n")
-                    openFile.write("G1 F" + str(PRINT_FEEDRATE) + " X" + str(X) + " Y"+ str(Y) + " E" + str(round(E, 5)) + "\n")
+                    openFile.write("G1 F" + str(PRINT_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + " Z" + str(Z) + " E" + str(round(E, 5)) + "\n")
                     runOnce = False
                 else:  # If it's the second (or any following) points on the path and the G0 and G1 feedrates have already been set
-                    openFile.write("G1 F" + str(PRINT_FEEDRATE) + " X" + str(X) + " Y"+ str(Y) + " E" + str(round(E, 5)) + "\n") # ("G1 X" + str(X) + " Y" + str(Y) + " E" + str(round(E, 5)) + "\n")
+                    openFile.write("G1 F" + str(PRINT_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + " Z" + str(Z) + " E" + str(round(E, 5)) + "\n") # ("G1 X" + str(X) + " Y" + str(Y) + " E" + str(round(E, 5)) + "\n")
                 previousE = E
 
             previousX = X
             previousY = Y
+            previousZ = Z
 
     def rotate_coordinates(coords, phi):
         """Rotate 2D coordinates about the Z-axis by a given angle."""
@@ -1200,7 +1203,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
                 
                 printable_coords_3d = np.array([np.matmul(DCM_AB, point3D) for point3D in coords_3d])
 
-                layerPaths.append([(point[0], point[1]) for point in printable_coords_3d])
+                layerPaths.append([(point[0], point[1], point[2]) for point in printable_coords_3d])
             printable_pathPoints.append(layerPaths)
             midLayer_Z_Heights.append(printable_coords_3d[0][2])
 
@@ -1226,7 +1229,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
                 
                 printable_coords_3d = np.array([np.matmul(DCM_AB, point3D) for point3D in coords_3d])
 
-                layerPaths.append([(point[0], point[1]) for point in printable_coords_3d])
+                layerPaths.append([(point[0], point[1], point[2]) for point in printable_coords_3d])
             printable_pathPoints.append(layerPaths)
 
         return printable_pathPoints
@@ -1400,7 +1403,9 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
                 openFile.write("; No change in B & C motion required\n")
 
             openFile.write("; B & C axis motion complete\n")
-
+            #testing
+            phi = 0
+            theta = 0
             # Orientation math (unchanged)
             QA = np.array([[np.cos(phi), -np.sin(phi), 0],
                         [np.sin(phi),  np.cos(phi), 0],
