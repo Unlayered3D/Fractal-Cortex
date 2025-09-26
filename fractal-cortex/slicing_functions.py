@@ -1132,11 +1132,12 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
             X = round(point[0], 5)
             Y = round(point[1], 5)
             Z = round(point[2], 5)
+            
             if p == 0:  # If it's the first point in the path
                 if enableRetraction == True:
                     openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(E - retractionDistance, 5)) + " ; Retraction" + "\n")
                 if enableZHop == True:
-                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z + layerHeight, 5)) + "\n")
+                    openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z + layerHeight, 5)) + "; Z hop w layer" + "\n")
                 if newChunk == True:
                     openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(Z + 30.0 + layerHeight, 5)) + "\n")
                     newChunk = False
@@ -1153,7 +1154,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
                 E += ((4.0 * layerHeight * lineWidth * s) / (np.pi * (1.75**2)))  # Use conservation of mass to determine length of 1.75mm filament to extrude
                 if runOnce == True:  # If both the G0 and G1 feedrate for this feature hasn't yet been set on this layer
                     if enableZHop == True:
-                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z"+ str(round(Z, 5)) + "\n")
+                        openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z"+ str(round(previousZ, 5)) + "; Z hop" + "\n")
                     if enableRetraction == True:
                         openFile.write("G1 F" + str(E_FEEDRATE) + " E" + str(round(previousE, 5)) + " ; Reversed Retraction" + "\n")
                     openFile.write("G1 F" + str(PRINT_FEEDRATE) + " X" + str(X) + " Y" + str(Y) + " Z" + str(Z) + " E" + str(round(E, 5)) + "\n")
@@ -1266,7 +1267,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     G1XY_FEEDRATE_SOLIDINFILL = G1XY_FEEDRATE  # mm/min (PLACEHOLDER)
     G1XY_FEEDRATE_INTERNALINFILL = G1XY_FEEDRATE  # mm/min (PLACEHOLDER)
 
-    AB_FEEDRATE = 25.0
+    AB_FEEDRATE = 2.0
 
     
     ASPEED_Scaled = []
@@ -1274,7 +1275,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     ASPEED_Scaled.append(AB_FEEDRATE)
     BSPEED_Scaled.append(AB_FEEDRATE)
     directions = np.array(directions)
-    directions[:, 1] = 90 - directions[:, 1]
+    # directions[:, 1] = 90 - directions[:, 1]
     directions[0] = [0.0, 0.0]
     AMOVE_Degrees = [sublist[1] for sublist in directions]
     AMOVE_Degrees.append(0.0)
@@ -1321,11 +1322,10 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
 
     # --- Homing & heatup (RRF) ---
     openFile.write("G28                      ; Home X, Y, Z\n")
-    openFile.write("G28 B C                  ; Home B & C (requires /sys/homeb.g and /sys/homec.g)\n")
 
-    openFile.write("M140 S" + str(initialBedTemp) + "       ; Set initial bed temp\n")
-    openFile.write("M105                     ; Report temps (optional)\n")
-    openFile.write("M190 S" + str(initialBedTemp) + "       ; Wait for bed\n")
+    # openFile.write("M140 S" + str(initialBedTemp) + "       ; Set initial bed temp\n")
+    # openFile.write("M105                     ; Report temps (optional)\n")
+    # openFile.write("M190 S" + str(initialBedTemp) + "       ; Wait for bed\n")
     openFile.write("M104 S" + str(initialNozzleTemp) + "     ; Set initial nozzle temp\n")
     openFile.write("M105                     ; Report temps (optional)\n")
     openFile.write("M109 S" + str(initialNozzleTemp) + "     ; Wait for nozzle\n")
@@ -1333,13 +1333,13 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     openFile.write("M82                      ; Absolute extrusion mode\n")
 
     # --- Bed tramming / tilt adjust ---
-    openFile.write("G32                      ; Bed tram (uses /sys/bed.g + M671 in config.g)\n")
+    #openFile.write("G32                      ; Bed tram (uses /sys/bed.g + M671 in config.g)\n")
 
     # --- Staging / centering ---
     openFile.write("G0 F3000.0 Z30.0         ; Lift to safe Z\n")
     openFile.write("G0 X0.0 Y0.0             ; Move to origin/center\n")
     openFile.write("M98 P\"macros/diag_centralize.g\"  ; Custom centralize/diagnostic macro\n")
-    openFile.write("G0 X0.0 Y0.0             ; Ensure back at origin/center\n")
+    openFile.write("G0 X0.0 Y0.0 B90.0 C0.0 F100             ; Ensure back at origin/center\n")
 
     # --- Extruder priming state ---
     openFile.write("G92 E0                   ; Reset extruder position\n")
@@ -1363,8 +1363,8 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
         optimizedInternalInfills = chunk_optimizedInternalInfills[key]
 
         # Your existing angle math (keep as-is)
-        theta = BMOVE_Degrees[int(key)] * (np.pi / 180.0)  # C rotation (about X in your DCM)
-        phi   = AMOVE_Degrees[int(key)] * (np.pi / 180.0)  # B rotation (about Z in your DCM)
+        theta = BMOVE_Degrees[int(key)] * (np.pi / 180.0)  # B rotation (about X in your DCM)
+        phi   = AMOVE_Degrees[int(key)] * (np.pi / 180.0)  # C rotation (about Z in your DCM)
         DCM_AB = np.eye(3)
 
         # ---- RRF pre-rotation handling for B & C (replaces MANUAL_STEPPER) ----
@@ -1380,23 +1380,23 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
 
             # Clear space before rotary motion (keep your clearances)
             openFile.write("G0 F" + str(G0Z_FEEDRATE) + " Z" + str(round(nozzleHeight, 5) + 10.0) + " ; Lift for B & C motion\n")
-            openFile.write("G0 X0.0 Y-175.0 ; Clear XY for B & C motion\n")
+            # openFile.write("G0 X0.0 Y-175.0 ; Clear XY for B & C motion\n")
 
             if a_has_move and b_has_move:
-                feed_degmin = str(max(a_spd_degmin, b_spd_degmin))
+                feed_degmin = str(100)#str(max(a_spd_degmin, b_spd_degmin))
                 openFile.write(
-                    "G1 B" + str(round(AMOVE_Degrees[int(key)], 5)) +
-                    " C" + str(round(BMOVE_Degrees[int(key)], 5)) +
+                    "G1 C" + str(round(AMOVE_Degrees[int(key)], 5)) +
+                    " B" + str(round(90-BMOVE_Degrees[int(key)], 5)) +
                     " F" + feed_degmin + "\n"
                 )
             elif (not a_has_move) and b_has_move:
                 openFile.write(
-                    "G1 C" + str(round(BMOVE_Degrees[int(key)], 5)) +
+                    "G1 B" + str(round(90-BMOVE_Degrees[int(key)], 5)) +
                     " F" + str(b_spd_degmin) + "\n"
                 )
             elif a_has_move and (not b_has_move):
                 openFile.write(
-                    "G1 B" + str(round(AMOVE_Degrees[int(key)], 5)) +
+                    "G1 C" + str(round(AMOVE_Degrees[int(key)], 5)) +
                     " F" + str(a_spd_degmin) + "\n"
                 )
             else:
@@ -1522,7 +1522,7 @@ def write_5_axis_gcode(newFile, savedFileName, printSettings, startingPositions,
     openFile.write("M104 S0       ;Set nozzle temp to zero" + "\n")
     openFile.write("G28 Y         ;Home Y Axis\n")
     openFile.write("G28 X         ;Home X Axis\n")
-    openFile.write("G28 B C       ;Home B & C (rotaries)\n")
+    openFile.write("G28 C       ;Home B & C (rotaries)\n")
     openFile.write("; B & C Axes Homed\n")
     openFile.write(";" + "End of GCODE" + "\n")
 
